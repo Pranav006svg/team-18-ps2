@@ -1,108 +1,63 @@
-# SRM Agentic AI Hackathon: Starter Template
+# StockPilot: Inventory Restock Agent
 
-This is the starting point for every team. It already has the setup done, so you can spend your time on your problem statement.
+Team 18 | PS2 | SRM Agentic AI Hackathon
 
-**Stack:** Next.js (App Router) · React · TypeScript · Tailwind CSS · Supabase PostgreSQL · Google Gemini API (function calling) · Zod · Vercel
+**Problem:** the store manager of FreshMart Velachery finds out about stock-outs too late, and purchase orders are made by hand in a spreadsheet.
 
-## What is already working
+## What our app does
 
-- A passcode login that protects your app and your Gemini quota
-- A Supabase connection (server side only)
-- A Gemini agent loop with function calling: Gemini picks a tool, Zod checks the arguments, your code runs it, and the result goes back to Gemini
-- 3 example tools on a `tasks` table: `listTasks` (reads), `createTask` (writes) and `completeTask` (writes)
-- A chat screen that shows every tool the agent used
-- An example REST API (`/api/tasks`) and a live data list
-- Seed data for all 6 problem statements in `seed/`
+- Finds items that are low on stock (at or below the reorder level) and shows how many days each will last.
+- Forecasts stock-outs: "what runs out in 3 days?" also catches items that are not low yet but will run out before the supplier can deliver.
+- Groups low items by supplier and creates draft purchase orders, one per supplier, in plain English.
+- Shows a live dashboard, product list and purchase order list. Every tool the agent uses is visible in the chat.
 
-## Setup (about 30 minutes)
+## Live demo
 
-1. **Create your team repo.** Click **Use this template** on GitHub and name it `team-<number>-ps<number>`.
-2. **Install.** Run `git clone <your repo>`, `cd` into it, and run `npm install`. You need Node.js 20 or later.
-3. **Create the database.** Create a project on [supabase.com](https://supabase.com). In **SQL Editor**, run `seed/00_starter_example.sql`, then the seed file for your problem.
-4. **Get the keys.**
-   - Supabase **Project Settings**: copy the Project URL and the secret (service_role) key
-   - [Google AI Studio](https://aistudio.google.com): click **Get API key**
-5. **Create `.env.local`.** Copy `.env.example` to `.env.local` and fill in all the values.
-6. **Run it.** Run `npm run dev`, open http://localhost:3000, enter your passcode and try a sample prompt.
-7. **Deploy.** On [vercel.com](https://vercel.com), import the repo, add the same environment variables, and deploy.
+- Link: **TODO: add Vercel link**
+- Passcode: **TODO: add passcode**
+- Try: `Create purchase orders for all low-stock dairy items.`
 
-To check your settings, open `/api/health`. It shows which variables are missing (never their values).
+## Agent tools
 
-## Folder guide
+| Tool | What it does | Reads / Writes |
+|---|---|---|
+| `getLowStockItems` | Low items (optional category / supplier), with days left, supplier, line cost and whether already on a PO | Reads |
+| `getStockForecast` | Items that run out within N days (low or not), flags stock-out before delivery | Reads |
+| `getSupplierDetails` | Supplier contact, lead time, rating, minimum order and their low items | Reads |
+| `getPurchaseOrders` | Purchase orders with supplier, status, total, expected date and items | Reads |
+| `createPurchaseOrders` | Creates draft POs, one per supplier, for low items (all / category / supplier / SKUs) | Writes |
+| `updatePurchaseOrderStatus` | Sends or cancels a purchase order, only when the change is allowed | Writes |
 
-```
-app/
-  page.tsx               Home page: agent chat + data list   <- change
-  login/page.tsx         Passcode page
-  api/agent/route.ts     POST /api/agent: runs the agent
-  api/tasks/route.ts     Example REST API                    <- copy for your tables
-  api/health/route.ts    Shows which settings are missing
-components/
-  AgentChat.tsx          Chat UI that shows tool calls       <- change the sample prompts
-  TaskList.tsx           Example data list                   <- replace with your data
-lib/
-  agent/tools.ts         THE AGENT TOOLS                     <- your main work
-  agent/systemPrompt.ts  Instructions for Gemini             <- rewrite for your problem
-  agent/runAgent.ts      The agent loop (max 5 rounds)
-  agent/defineTool.ts    Turns Zod schemas into Gemini tool declarations
-  supabase.ts            Server-side Supabase client
-  schemas.ts             Shared Zod schemas
-proxy.ts                 Passcode gate for every page and API
-seed/                    SQL seed data for each problem statement
-```
+## Database (Supabase)
 
-## How to add a tool (the main hackathon work)
+`suppliers`, `products`, `purchase_orders`, `purchase_order_items`. Created from `seed/ps2_inventory_restock.sql`. Re-running that file resets the data.
 
-Open `lib/agent/tools.ts` and copy this pattern:
+## Rules enforced in code (not trusted to the AI)
 
-```ts
-const createReturnRequest = defineTool({
-  name: "createReturnRequest",
-  description: "Use this when the customer wants to return a product from a delivered order.",
-  writes: true,
-  schema: z.object({
-    order_id: z.number().int().describe("The order number, for example 1007"),
-    product_id: z.string().describe("The product id, for example P101"),
-    reason: z.string().min(3).describe("Why the customer is returning it"),
-  }),
-  run: async ({ order_id, product_id, reason }) => {
-    // 1. Check your business rule (for example the return window)
-    // 2. Read or write Supabase
-    // 3. Return a small, clean object, or throw new Error("clear message")
-  },
-});
+1. Low means `stock_qty <= reorder_level`. Days left = stock / average daily sales. At risk means days left is less than the supplier lead time.
+2. Gemini only chooses which items. Quantity (reorder quantity), price (unit cost) and totals are computed by the server from the database.
+3. Items that are not low are never ordered; the reply says why.
+4. Items already on a draft or sent PO are never ordered again.
+5. One draft PO per supplier. Expected date = today (India time) + supplier lead time.
+6. A PO below the supplier's minimum order value is still created, with a warning in its notes.
+7. Status changes allowed: draft to sent, draft to cancelled, sent to cancelled. Anything else is refused.
+8. If saving the PO lines fails, the half-made PO is deleted.
 
-export const tools: AgentTool[] = [createReturnRequest /*, more tools */];
-```
+## Tech stack
 
-Good tools:
+Next.js (App Router), React, TypeScript, Tailwind CSS, Next.js route handlers, Zod, Supabase JS (server only), Gemini function calling (`@google/genai`), Vercel.
 
-- Have a description that starts with "Use this when..."
-- Describe every field and its format, for example "YYYY-MM-DD"
-- Check business rules in code, not only in the prompt
-- Return small objects that Gemini can read easily
-- Throw clear errors, which the agent then explains to the user
+## Run it locally
 
-Then rewrite `lib/agent/systemPrompt.ts`. Name the business user, the logged-in user id (for example `C001`), your business rules and when to use each tool.
+1. `npm install`
+2. In Supabase SQL Editor, run `seed/00_starter_example.sql`, then `seed/ps2_inventory_restock.sql`.
+3. Copy `.env.example` to `.env.local` and fill in `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `APP_PASSCODE`.
+4. `npm run dev`, open http://localhost:3000 and enter the passcode.
+5. Check `/api/health` if something does not work.
 
-## Rules to remember
+## Team
 
-- Never commit `.env.local`. It is already in `.gitignore`.
-- Never use `SUPABASE_SECRET_KEY` in frontend code. Only files under `lib/` and `app/api/` may use it.
-- Do not change the core stack.
-- Before you push, run `npm run build`. If it fails on your laptop, it will fail on Vercel too.
-
-## Seed files
-
-| File | Problem |
-| --- | --- |
-| `00_starter_example.sql` | Example `tasks` table (run first) |
-| `demo_eventease.sql` | Day 1 lab: EventEase campus events |
-| `ps1_ecommerce_support.sql` | PS1 E-commerce Customer Support Agent |
-| `ps2_inventory_restock.sql` | PS2 Inventory Restock Agent |
-| `ps3_clinic_appointments.sql` | PS3 Clinic Appointment Agent |
-| `ps4_it_helpdesk.sql` | PS4 IT Helpdesk Ticket Agent |
-| `ps5_expense_claims.sql` | PS5 Expense Claim Assistant |
-| `ps6_job_match.sql` | PS6 Job Match Agent |
-
-All dates in the seed data are relative to today, so the data is always fresh. All names, companies and records are made up. You can run a seed file again at any time to reset your data.
+- M P Pranav Kumar: AI / Agent
+- Subash Moorthi: Team Lead + Database
+- Eediga Ram Charan: Backend / API
+- Shreel Singh: Frontend
