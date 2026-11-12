@@ -23,3 +23,21 @@ export const createTaskSchema = z.object({
   title: z.string().trim().min(1).max(200),
   due_date: isoDate.optional(),
 });
+
+// ---- StockPilot ----
+export const CATEGORY_LIST = [
+  "Dairy",
+  "Bakery",
+  "Beverages",
+  "Snacks",
+  "Staples",
+  "Personal Care",
+  "Household",
+  "Fruits & Vegetables",
+  "Spices",
+  "Frozen",
+] as const;
+
+export const categoryEnum = z.enum(CATEGORY_LIST);
+export const supplierIdSchema = z.string().regex(/^SUP\d{2}$/, "Supplier id looks like SUP01");
+export const skuSchema = z.string().regex(/^SKU\d{3}$/, "SKU looks like SKU001");
